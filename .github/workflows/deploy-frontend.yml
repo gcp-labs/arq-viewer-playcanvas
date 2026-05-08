@@ -1,0 +1,45 @@
+name: Build and Push Frontend Image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: gcp-labs-core-495514
+  REGION: us-central1
+  REPOSITORY: arq-viewer-repo
+  IMAGE_NAME: frontend
+  WIF_PROVIDER: 'projects/749761773322/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+  SA_EMAIL: 'github-actions-sa@gcp-labs-core-495514.iam.gserviceaccount.com'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OBRIGATÓRIO para Workload Identity Federation
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SA_EMAIL }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG_SHA: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          docker build -t "${IMAGE_URI}:latest" -t "${IMAGE_URI}:${IMAGE_TAG_SHA}" .
+          docker push "${IMAGE_URI}:latest"
+          docker push "${IMAGE_URI}:${IMAGE_TAG_SHA}"
